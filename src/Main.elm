@@ -3,11 +3,12 @@ module Main exposing (main)
 import Account
 import Browser exposing (Document, UrlRequest)
 import Browser.Navigation as Navigation
-import Feed as PublicFeed
 import Html exposing (Html, a, div, h1, i, text)
 import Html.Attributes exposing (class)
+import PublicFeed
 import Routes
 import Url exposing (Url)
+import UserFeed
 import WebSocket
 
 
@@ -34,6 +35,7 @@ main =
 type Page
     = PublicFeed PublicFeed.Model
     | Account Account.Model
+    | UserFeed String UserFeed.Model
     | NotFound
 
 
@@ -87,6 +89,12 @@ viewContent page =
                 |> Html.map AccountMsg
             )
 
+        UserFeed username userFeedModel ->
+            ( "User Feed from @" ++ username
+            , UserFeed.view userFeedModel
+                |> Html.map UserFeedMsg
+            )
+
         NotFound ->
             ( "Not Found"
             , div [ class "not-found" ]
@@ -114,6 +122,7 @@ type Msg
     | Visit UrlRequest
     | AccountMsg Account.Msg
     | PublicFeedMsg PublicFeed.Msg
+    | UserFeedMsg UserFeed.Msg
 
 
 setNewPage : Maybe Routes.Route -> Model -> ( Model, Cmd Msg )
@@ -122,7 +131,7 @@ setNewPage maybeRoute model =
         Just Routes.Home ->
             let
                 ( publicFeedModel, publicFeedCmd ) =
-                    PublicFeed.init ()
+                    PublicFeed.init
             in
             ( { model | page = PublicFeed publicFeedModel }, Cmd.map PublicFeedMsg publicFeedCmd )
 
@@ -132,6 +141,15 @@ setNewPage maybeRoute model =
                     Account.init
             in
             ( { model | page = Account accountModel }, Cmd.map AccountMsg accountCmd )
+
+        Just (Routes.UserFeed username) ->
+            let
+                ( userFeedModel, userFeedCmd ) =
+                    UserFeed.init username
+            in
+            ( { model | page = UserFeed username userFeedModel }
+            , Cmd.map UserFeedMsg userFeedCmd
+            )
 
         Nothing ->
             ( { model | page = NotFound }, Cmd.none )
@@ -163,6 +181,15 @@ update msg model =
             in
             ( { model | page = PublicFeed updatedPublicFeedModel }
             , Cmd.map PublicFeedMsg publicFeedCmd
+            )
+
+        ( UserFeedMsg userFeedMsg, UserFeed username userFeedModel ) ->
+            let
+                ( updatedUserFeedModel, userFeedCmd ) =
+                    UserFeed.update userFeedMsg userFeedModel
+            in
+            ( { model | page = UserFeed username updatedUserFeedModel }
+            , Cmd.map UserFeedMsg userFeedCmd
             )
 
         ( Visit (Browser.Internal url), _ ) ->
