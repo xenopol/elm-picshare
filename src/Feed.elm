@@ -3,9 +3,9 @@ module Feed exposing (Model, Msg, init, subscriptions, update, view)
 import Html exposing (..)
 import Html.Attributes exposing (class, disabled, placeholder, src, type_, value)
 import Html.Events exposing (onClick, onInput, onSubmit)
+import Html.Keyed
 import Http
-import Json.Decode exposing (Decoder, bool, decodeString, int, list, string, succeed)
-import Json.Decode.Pipeline exposing (hardcoded, required)
+import Json.Decode as Json exposing (Decoder, bool, decodeString, int, list, string, succeed)
 import WebSocket
 
 
@@ -36,13 +36,14 @@ type alias Model =
 
 photoDecoder : Decoder Photo
 photoDecoder =
-    succeed Photo
-        |> required "id" int
-        |> required "url" string
-        |> required "caption" string
-        |> required "liked" bool
-        |> required "comments" (list string)
-        |> hardcoded ""
+    Json.map6
+        Photo
+        (Json.field "id" int)
+        (Json.field "url" string)
+        (Json.field "caption" string)
+        (Json.field "liked" bool)
+        (Json.field "comments" (list string))
+        (Json.succeed "")
 
 
 baseUrl : String
@@ -136,9 +137,10 @@ viewComments photo =
         ]
 
 
-viewDetailedPhoto : Photo -> Html Msg
+viewDetailedPhoto : Photo -> ( String, Html Msg )
 viewDetailedPhoto photo =
-    div [ class "detailed-photo" ]
+    ( photo.url
+    , div [ class "detailed-photo" ]
         [ img [ src photo.url ] []
         , div [ class "photo-info" ]
             [ viewLoveButton photo
@@ -146,13 +148,14 @@ viewDetailedPhoto photo =
             , viewComments photo
             ]
         ]
+    )
 
 
 viewFeed : Maybe Feed -> Html Msg
 viewFeed maybeFeed =
     case maybeFeed of
         Just feed ->
-            div [] (List.map viewDetailedPhoto feed)
+            Html.Keyed.node "div" [] (List.map viewDetailedPhoto feed)
 
         Nothing ->
             div [ class "loading-feed" ]
@@ -207,9 +210,7 @@ viewContent model =
 view : Model -> Html Msg
 view model =
     div []
-        [ div [ class "header" ]
-            [ h1 [] [ text "Picshare" ] ]
-        , div [ class "content-flow" ]
+        [ div [ class "content-flow" ]
             [ viewContent model ]
         ]
 
@@ -219,7 +220,7 @@ type Msg
     | UpdateComment Id String
     | SaveComment Id
     | LoadFeed (Result Http.Error Feed)
-    | LoadStreamPhoto (Result Json.Decode.Error Photo)
+    | LoadStreamPhoto (Result Json.Error Photo)
     | FlushStreamQueue
 
 

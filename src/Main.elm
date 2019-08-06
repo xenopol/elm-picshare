@@ -1,11 +1,14 @@
 module Main exposing (main)
 
+import Account
 import Browser exposing (Document, UrlRequest)
 import Browser.Navigation as Navigation
+import Feed as PublicFeed
 import Html exposing (Html, a, div, h1, i, text)
 import Html.Attributes exposing (class)
 import Routes
 import Url exposing (Url)
+import WebSocket
 
 
 
@@ -29,8 +32,8 @@ main =
 
 
 type Page
-    = PublicFeed
-    | Account
+    = PublicFeed PublicFeed.Model
+    | Account Account.Model
     | NotFound
 
 
@@ -56,17 +59,32 @@ init () url navigationKey =
 -- View
 
 
+viewHeader : Html Msg
+viewHeader =
+    div [ class "header" ]
+        [ div [ class "header-nav" ]
+            [ a [ class "nav-brand", Routes.href Routes.Home ]
+                [ text "Picshare" ]
+            , a [ class "nav-account", Routes.href Routes.Account ]
+                [ i [ class "fa fa-2x fa-gear" ] []
+                ]
+            ]
+        ]
+
+
 viewContent : Page -> ( String, Html Msg )
 viewContent page =
     case page of
-        PublicFeed ->
+        PublicFeed publicFeedModel ->
             ( "Picshare"
-            , h1 [] [ text "Public Feed" ]
+            , PublicFeed.view publicFeedModel
+                |> Html.map PublicFeedMsg
             )
 
-        Account ->
+        Account accountModel ->
             ( "Account"
-            , h1 [] [ text "Account" ]
+            , Account.view accountModel
+                |> Html.map AccountMsg
             )
 
         NotFound ->
@@ -83,7 +101,7 @@ view model =
             viewContent model.page
     in
     { title = title
-    , body = [ content ]
+    , body = [ viewHeader, content ]
     }
 
 
@@ -94,16 +112,26 @@ view model =
 type Msg
     = NewRoute (Maybe Routes.Route)
     | Visit UrlRequest
+    | AccountMsg Account.Msg
+    | PublicFeedMsg PublicFeed.Msg
 
 
 setNewPage : Maybe Routes.Route -> Model -> ( Model, Cmd Msg )
 setNewPage maybeRoute model =
     case maybeRoute of
         Just Routes.Home ->
-            ( { model | page = PublicFeed }, Cmd.none )
+            let
+                ( publicFeedModel, publicFeedCmd ) =
+                    PublicFeed.init ()
+            in
+            ( { model | page = PublicFeed publicFeedModel }, Cmd.map PublicFeedMsg publicFeedCmd )
 
         Just Routes.Account ->
-            ( { model | page = Account }, Cmd.none )
+            let
+                ( accountModel, accountCmd ) =
+                    Account.init
+            in
+            ( { model | page = Account accountModel }, Cmd.map AccountMsg accountCmd )
 
         Nothing ->
             ( { model | page = NotFound }, Cmd.none )
@@ -111,9 +139,34 @@ setNewPage maybeRoute model =
 
 update : Msg -> Model -> ( Model, Cmd Msg )
 update msg model =
-    case msg of
-        NewRoute maybeRoute ->
-            setNewPage maybeRoute model
+    case ( msg, model.page ) of
+        ( NewRoute maybeRoute, _ ) ->
+            let
+                ( updatedModel, cmd ) =
+                    setNewPage maybeRoute model
+            in
+            ( updatedModel, Cmd.batch [ cmd, WebSocket.close () ] )
+
+        ( AccountMsg accountMsg, Account accountModel ) ->
+            let
+                ( updatedAccountModel, accountCmd ) =
+                    Account.update accountMsg accountModel
+            in
+            ( { model | page = Account updatedAccountModel }
+            , Cmd.map AccountMsg accountCmd
+            )
+
+        ( PublicFeedMsg publicFeedMsg, PublicFeed publicFeedModel ) ->
+            let
+                ( updatedPublicFeedModel, publicFeedCmd ) =
+                    PublicFeed.update publicFeedMsg publicFeedModel
+            in
+            ( { model | page = PublicFeed updatedPublicFeedModel }
+            , Cmd.map PublicFeedMsg publicFeedCmd
+            )
+
+        ( Visit (Browser.Internal url), _ ) ->
+            ( model, Navigation.pushUrl model.navigationKey (Url.toString url) )
 
         _ ->
             ( model, Cmd.none )
@@ -125,4 +178,10 @@ update msg model =
 
 subscriptions : Model -> Sub Msg
 subscriptions model =
-    Sub.none
+    case model.page of
+        PublicFeed publicFeedModel ->
+            PublicFeed.subscriptions publicFeedModel
+                |> Sub.map PublicFeedMsg
+
+        _ ->
+            Sub.none
