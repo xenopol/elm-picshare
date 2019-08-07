@@ -129,30 +129,26 @@ setNewPage : Maybe Routes.Route -> Model -> ( Model, Cmd Msg )
 setNewPage maybeRoute model =
     case maybeRoute of
         Just Routes.Home ->
-            let
-                ( publicFeedModel, publicFeedCmd ) =
-                    PublicFeed.init
-            in
-            ( { model | page = PublicFeed publicFeedModel }, Cmd.map PublicFeedMsg publicFeedCmd )
+            PublicFeed.init
+                |> processPageUpdate PublicFeed PublicFeedMsg model
 
         Just Routes.Account ->
-            let
-                ( accountModel, accountCmd ) =
-                    Account.init
-            in
-            ( { model | page = Account accountModel }, Cmd.map AccountMsg accountCmd )
+            Account.init
+                |> processPageUpdate Account AccountMsg model
 
         Just (Routes.UserFeed username) ->
-            let
-                ( userFeedModel, userFeedCmd ) =
-                    UserFeed.init username
-            in
-            ( { model | page = UserFeed username userFeedModel }
-            , Cmd.map UserFeedMsg userFeedCmd
-            )
+            UserFeed.init username
+                |> processPageUpdate (UserFeed username) UserFeedMsg model
 
         Nothing ->
             ( { model | page = NotFound }, Cmd.none )
+
+
+processPageUpdate : (pageModel -> Page) -> (pageMsg -> Msg) -> Model -> ( pageModel, Cmd pageMsg ) -> ( Model, Cmd Msg )
+processPageUpdate createPage wrapMsg model ( pageModel, pageCmd ) =
+    ( { model | page = createPage pageModel }
+    , Cmd.map wrapMsg pageCmd
+    )
 
 
 update : Msg -> Model -> ( Model, Cmd Msg )
@@ -166,31 +162,16 @@ update msg model =
             ( updatedModel, Cmd.batch [ cmd, WebSocket.close () ] )
 
         ( AccountMsg accountMsg, Account accountModel ) ->
-            let
-                ( updatedAccountModel, accountCmd ) =
-                    Account.update accountMsg accountModel
-            in
-            ( { model | page = Account updatedAccountModel }
-            , Cmd.map AccountMsg accountCmd
-            )
+            Account.update accountMsg accountModel
+                |> processPageUpdate Account AccountMsg model
 
         ( PublicFeedMsg publicFeedMsg, PublicFeed publicFeedModel ) ->
-            let
-                ( updatedPublicFeedModel, publicFeedCmd ) =
-                    PublicFeed.update publicFeedMsg publicFeedModel
-            in
-            ( { model | page = PublicFeed updatedPublicFeedModel }
-            , Cmd.map PublicFeedMsg publicFeedCmd
-            )
+            PublicFeed.update publicFeedMsg publicFeedModel
+                |> processPageUpdate PublicFeed PublicFeedMsg model
 
         ( UserFeedMsg userFeedMsg, UserFeed username userFeedModel ) ->
-            let
-                ( updatedUserFeedModel, userFeedCmd ) =
-                    UserFeed.update userFeedMsg userFeedModel
-            in
-            ( { model | page = UserFeed username updatedUserFeedModel }
-            , Cmd.map UserFeedMsg userFeedCmd
-            )
+            UserFeed.update userFeedMsg userFeedModel
+                |> processPageUpdate (UserFeed username) UserFeedMsg model
 
         ( Visit (Browser.Internal url), _ ) ->
             ( model, Navigation.pushUrl model.navigationKey (Url.toString url) )
